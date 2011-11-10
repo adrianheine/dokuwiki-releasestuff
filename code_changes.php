@@ -6,6 +6,15 @@ if (count($argv) < 2) {
 }
 
 $RELEASE_DATE = rtrim(`date +%Y-%m-%d`);
+if (substr($argv[1], 0, 2) === 'rc') {
+    preg_match('/^rc(\d*)(.*)$/', $argv[1], $matches);
+    if (!$matches[1]) {
+        $matches[1] = 1;
+    }
+    $RC = $matches[1];
+    $argv[1] = $matches[2] . ' RC' . $matches[1];
+}
+
 $RELEASE = $RELEASE_DATE . ' "' . $argv[1] . '"';
 $ROOT = 'dokuwiki';
 
@@ -130,7 +139,11 @@ function commit_releasepreps() {
 
 function merge_masterintostable() {
     global $ROOT;
-    system("cd $ROOT && git checkout stable && git merge master");
+    $run = `cd $ROOT && git checkout stable && git merge master`;
+    if(strpos($run, "Merge conflict in doku.php") !== false) {
+        // Need to hard-reset doku.php
+        system("cd $ROOT && git checkout master -- doku.php && git commit -a");
+    }
     echo "Master merged into stable\n";
 }
 
@@ -144,7 +157,9 @@ function update_version() {
 function commit_release() {
     global $ROOT;
     global $RELEASE;
-    system("cd $ROOT && git commit -m 'Release $RELEASE' VERSION");
+    global $RC;
+    $msg = 'Release ' . ($RC ? 'candidate rc' : '') . $RELEASE;
+    system("cd $ROOT && git commit -m '$msg' VERSION");
     echo "Commited release\n";
 }
 
@@ -152,6 +167,8 @@ function tag_stable() {
     global $RELEASE;
     global $RELEASE_DATE;
     global $ROOT;
-    system("cd $ROOT && git tag -s -m '$RELEASE' 'release_stable_" . $RELEASE_DATE . "'");
+    global $RC;
+    $tag = 'release_' . ($RC ? 'candidate' : 'stable');
+    system("cd $ROOT && git tag -s -m '$RELEASE' '{$tag}_$RELEASE_DATE'");
     echo "Commit tagged\n";
 }
