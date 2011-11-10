@@ -150,7 +150,7 @@ function merge_masterintostable() {
 function update_version() {
     global $RELEASE;
     global $ROOT;
-    file_put_contents("$ROOT/VERSION", $RELEASE);
+    file_put_contents("$ROOT/VERSION", $RELEASE . "\n");
     echo "Updated VERSION file\n";
 }
 
