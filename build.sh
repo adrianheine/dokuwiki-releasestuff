@@ -20,7 +20,7 @@ read CODE
 echo $TYPE$DATE "\"$CODE\""
 echo
 echo "did you tag the stable branch with '${TAG}_$DATE'?"
-echo "  git tag -s 'release_candidate_2010-10-07' -m '$TYPE$DATE \"$CODE\"'"
+echo "  git tag -s '$TAG_$DATE' -m '$TYPE$DATE \"$CODE\"'"
 echo
 read bla
 echo "did you merge master into the stable branch?"
