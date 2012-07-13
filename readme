@@ -1,0 +1,18 @@
+This repository contains scripts for releasing DokuWiki versions.
+
+Normal release process:
+
+  * merge stable into old-stable
+
+  * run php code_changes.php rcCodename
+  * go into ./dokuwiki
+    * check everything // FIXME: how?
+    * git push && git push --tags
+  * run build.sh
+  * upload
+
+  * run php code_changes.php rc2Codename
+  * …
+
+  * run php code_changes.php Codename
+  * …
