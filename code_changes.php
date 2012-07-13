@@ -2,10 +2,17 @@
 <?php
 
 if (count($argv) < 2) {
-    die("{$argv[0]} [codename]\n");
+    die("{$argv[0]} [codename] [date]\n");
 }
 
-$RELEASE_DATE = rtrim(`date +%Y-%m-%d`);
+if (count($argv) < 3) {
+  $RELEASE_DATE = rtrim(`date +%Y-%m-%d`);
+  $RELEASE_HOTFIX = '';
+} else {
+  $RELEASE_DATE = $argv[2];
+  $RELEASE_HOTFIX = substr($RELEASE_DATE, 10);
+}
+
 if (substr($argv[1], 0, 2) === 'rc') {
     preg_match('/^rc(\d*)(.*)$/', $argv[1], $matches);
     if (!$matches[1]) {
@@ -15,24 +22,75 @@ if (substr($argv[1], 0, 2) === 'rc') {
     $argv[1] = $matches[2] . ' RC' . $matches[1];
 }
 
-$RELEASE = $RELEASE_DATE . ' "' . $argv[1] . '"';
+$RELEASE_NAME = $argv[1];
+$RELEASE = $RELEASE_DATE . ' "' . $RELEASE_NAME . '"';
 $ROOT = 'dokuwiki';
+$LAST_RELEASE = 'old-stable';
+$RELEASE_BRANCH = 'master';
 
-get_git();
-update_installphp();
+if (file_exists('VERSION') && file_exists('.git')) {
+  echo "Working from stable or old-stable checkout.\n";
+  $ROOT = '.';
+  die("Probably not supported anymore\n");
+} else {
+  get_git();
+}
+
 update_updatecheck();
-update_deletedfiles();
+
+if (!$RELEASE_HOTFIX) {
+    // FIXME might be necessary!
+    update_installphp();
+    update_deletedfiles();
+}
+
+if ($RELEASE_BRANCH === 'old-stable') {
+    switch_to_branch($RELEASE_BRANCH);
+}
 commit_releasepreps();
-merge_masterintostable();
+
+if (!$RELEASE_HOTFIX) {
+    merge_masterintostable();
+} elseif ($RELEASE_BRANCH === 'stable') {
+    switch_to_branch($RELEASE_BRANCH);
+    cherrypick('master');
+}
+
 update_version();
 commit_release();
 tag_stable();
 
 function get_git() {
     global $ROOT;
-    system("git clone git@github.com:splitbrain/dokuwiki.git $ROOT
-            cd $ROOT
-    ");
+    system("git clone git@github.com:splitbrain/dokuwiki.git $ROOT");
+    global $RELEASE_HOTFIX;
+    if ($RELEASE_HOTFIX) {
+        global $RELEASE_NAME;
+        global $RELEASE_BRANCH;
+        $V = null;
+        $releases = array('stable', 'old-stable');
+        $cur_release = null;
+        while (strpos($V, '"' . $RELEASE_NAME . '"') === false) {
+            if (count($releases) === 0) {
+                die("Release $RELEASE_NAME not found\n");
+            }
+            $cur_release = array_shift($releases);
+            switch_to_branch($cur_release);
+            $V = file_get_contents("$ROOT/VERSION");
+        }
+        $RELEASE_BRANCH = $cur_release;
+        switch_to_branch('master');
+    }
+}
+
+function switch_to_branch($branch) {
+    global $ROOT;
+    system("cd $ROOT && git checkout $branch");
+}
+
+function cherrypick($commitish) {
+    global $ROOT;
+    system("cd $ROOT && git cherry-pick $commitish");
 }
 
 function update_installphp() {
@@ -76,14 +134,19 @@ function update_installphp() {
 
 function update_updatecheck() {
     global $ROOT;
+    global $RELEASE_HOTFIX;
     $dokuphp = file_get_contents("$ROOT/doku.php");
-    if (!preg_match('/\$updateVersion = (\d{2});/', $dokuphp, $matches)) {
-        die ('Could not parse doku.php');
+    if (!preg_match('/\$updateVersion = (\d+(?:\.\d+)?);/', $dokuphp, $matches)) {
+        die ("Could not parse doku.php\n");
     }
     $old = $matches[1];
-    $new = intval($old) + 1;
+    $new = explode('.', $old);
+    if ($RELEASE_HOTFIX && count($new) === 1) {
+      $new[] = '0';
+    }
+    $new[count($new) - 1] = intval($new[count($new) - 1]) + 1;
     $dokuphp = str_replace('$updateVersion = ' . $old . ';',
-                           '$updateVersion = ' . $new . ';', $dokuphp);
+                           '$updateVersion = ' . implode('.', $new) . ';', $dokuphp);
     file_put_contents("$ROOT/doku.php", $dokuphp);
     if (`php -l $ROOT/doku.php` !== "No syntax errors detected in $ROOT/doku.php\n") {
         die ('Could not update doku.php');
@@ -158,8 +221,9 @@ function commit_release() {
     global $ROOT;
     global $RELEASE;
     global $RC;
-    $msg = 'Release ' . ($RC ? 'candidate rc' : '') . $RELEASE;
-    system("cd $ROOT && git commit -m '$msg' VERSION");
+    global $RELEASE_HOTFIX;
+    $msg = ($RELEASE_HOTFIX ? 'Hotfix release ' : 'Release ') . ($RC ? 'candidate rc' : '') . $RELEASE;
+    system("cd $ROOT && git commit -m '$msg' VERSION") || die();
     echo "Commited release\n";
 }
 
@@ -169,6 +233,6 @@ function tag_stable() {
     global $ROOT;
     global $RC;
     $tag = 'release_' . ($RC ? 'candidate' : 'stable');
-    system("cd $ROOT && git tag -s -m '$RELEASE' '{$tag}_$RELEASE_DATE'");
+    system("cd $ROOT && git tag -s -m '$RELEASE' '{$tag}_$RELEASE_DATE'") || die();
     echo "Commit tagged\n";
 }
